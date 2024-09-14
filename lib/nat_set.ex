@@ -17,7 +17,7 @@ defmodule NatSet do
   NatSets are `Enumerable` and `Collectable`.
   """
 
-  use Bitwise
+  import Bitwise
 
   # NatSets are divided into "slices" of at most @slice_size elements. A NatSet is a map in which
   # each key `k` is a non-negative integer called a _slice index_. The value for `k` is called a
@@ -28,7 +28,8 @@ defmodule NatSet do
   # The least significant bit represents the first number in this sequence, etc.
 
   @slice_pow 8
-  @slice_size (1 <<< @slice_pow) # 2^@slice_pow
+  # 2^@slice_pow
+  @slice_size 1 <<< @slice_pow
 
   @opaque t :: %NatSet{map: %{non_neg_integer => non_neg_integer}}
   @type n :: non_neg_integer
@@ -53,8 +54,8 @@ defmodule NatSet do
       iex> NatSet.new([3, 3, 3, 2, 2, 1])
       #NatSet<[1, 2, 3]>
   """
-  @spec new(Enum.t) :: t
-  def new(enumerable), do: Enum.reduce(enumerable, new, &put(&2, &1))
+  @spec new(Enum.t()) :: t
+  def new(enumerable), do: Enum.reduce(enumerable, new(), &put(&2, &1))
 
   @doc """
   Creates a NatSet from an enumerable via the transformation function.
@@ -64,7 +65,7 @@ defmodule NatSet do
       iex> NatSet.new([1, 2, 1], fn x -> 2 * x end)
       #NatSet<[2, 4]>
   """
-  @spec new(Enum.t, (n -> n)) :: t
+  @spec new(Enum.t(), (n -> n)) :: t
   def new(enumerable, transform), do: Enum.reduce(enumerable, %NatSet{}, &put(&2, transform.(&1)))
 
   @doc """
@@ -98,7 +99,8 @@ defmodule NatSet do
   @spec put(t, n) :: t
   def put(%NatSet{} = nat_set, n) when n >= 0 do
     slice = 1 <<< rem(n, @slice_size)
-    Map.update!(nat_set, :map, fn map -> Map.update(map, slice_idx(n), slice, &(&1 ||| slice)) end)
+
+    %{nat_set | map: Map.update(nat_set.map, slice_idx(n), slice, &(&1 ||| slice))}
   end
 
   @doc """
@@ -117,13 +119,14 @@ defmodule NatSet do
     slice_idx = slice_idx(n)
     slice = Map.get(nat_set.map, slice_idx, 0)
 
-    Map.update!(nat_set, :map, fn map ->
+    map =
       if slice == 0 do
-        Map.delete(map, slice_idx)
+        Map.delete(nat_set.map, slice_idx)
       else
-        Map.put(map, slice_idx, slice &&& ~~~(1 <<< rem(n, @slice_size)))
+        Map.put(nat_set.map, slice_idx, slice &&& ~~~(1 <<< rem(n, @slice_size)))
       end
-    end)
+
+    %{nat_set | map: map}
   end
 
   @doc """
@@ -135,7 +138,7 @@ defmodule NatSet do
       3
   """
   @spec size(t) :: non_neg_integer
-  def size(%NatSet{} = nat_set), do: nat_set |> to_stream |> Enum.count
+  def size(%NatSet{} = nat_set), do: nat_set |> to_stream |> Enum.count()
 
   @doc """
   Returns the difference between `nat_set1` and `nat_set2`.
@@ -149,15 +152,17 @@ defmodule NatSet do
   """
   @spec difference(t, t) :: t
   def difference(%NatSet{} = nat_set1, %NatSet{} = nat_set2) do
-    map = Enum.reduce(nat_set1.map, %{}, fn {slice_idx1, slice1}, result ->
-      slice2 = Map.get(nat_set2.map, slice_idx1, 0)
-      slice = slice1 &&& ~~~(slice2)
-      if slice == 0 do
-        result
-      else
-        Map.put(result, slice_idx1, slice)
-      end
-    end)
+    map =
+      Enum.reduce(nat_set1.map, %{}, fn {slice_idx1, slice1}, result ->
+        slice2 = Map.get(nat_set2.map, slice_idx1, 0)
+        slice = slice1 &&& ~~~slice2
+
+        if slice == 0 do
+          result
+        else
+          Map.put(result, slice_idx1, slice)
+        end
+      end)
 
     %NatSet{map: map}
   end
@@ -173,9 +178,11 @@ defmodule NatSet do
       false
   """
   @spec disjoint?(t, t) :: boolean
-  def disjoint?(%NatSet{} = nat_set1, %NatSet{} = nat_set2) do
-    if map_size(nat_set1) > map_size(nat_set2), do: {nat_set1, nat_set2} = {nat_set2, nat_set1}
 
+  def disjoint?(%{map: map1} = ns1, %{map: map2} = ns2) when map_size(map1) > map_size(map2),
+    do: disjoint?(ns2, ns1)
+
+  def disjoint?(%NatSet{} = nat_set1, %NatSet{} = nat_set2) do
     Enum.all?(nat_set1.map, fn {slice_idx1, slice1} ->
       (slice1 &&& Map.get(nat_set2.map, slice_idx1, 0)) == 0
     end)
@@ -192,7 +199,8 @@ defmodule NatSet do
       false
   """
   @spec equal?(t, t) :: boolean
-  def equal?(%NatSet{} = nat_set1, %NatSet{} = nat_set2), do: Map.equal?(nat_set1.map, nat_set2.map)
+  def equal?(%NatSet{} = nat_set1, %NatSet{} = nat_set2),
+    do: Map.equal?(nat_set1.map, nat_set2.map)
 
   @doc """
   Returns the intersection between `nat_set1` and `nat_set2`.
@@ -205,17 +213,20 @@ defmodule NatSet do
       #NatSet<[2, 3]>
   """
   @spec intersection(t, t) :: t
-  def intersection(%NatSet{} = nat_set1, %NatSet{} = nat_set2) do
-    if map_size(nat_set1) > map_size(nat_set2), do: {nat_set1, nat_set2} = {nat_set2, nat_set1}
+  def intersection(%{map: map1} = ns1, %{map: map2} = ns2) when map_size(map1) > map_size(map2),
+    do: intersection(ns2, ns1)
 
-    map = Enum.reduce(nat_set1.map, %{}, fn {slice_idx1, slice1}, result ->
-      slice = slice1 &&& Map.get(nat_set2.map, slice_idx1, 0)
-      if slice == 0 do
-        result
-      else
-        Map.put(result, slice_idx1, slice)
-      end
-    end)
+  def intersection(%NatSet{} = nat_set1, %NatSet{} = nat_set2) do
+    map =
+      Enum.reduce(nat_set1.map, %{}, fn {slice_idx1, slice1}, result ->
+        slice = slice1 &&& Map.get(nat_set2.map, slice_idx1, 0)
+
+        if slice == 0 do
+          result
+        else
+          Map.put(result, slice_idx1, slice)
+        end
+      end)
 
     %NatSet{map: map}
   end
@@ -249,9 +260,10 @@ defmodule NatSet do
   """
   @spec union(t, t) :: t
   def union(%NatSet{} = nat_set1, %NatSet{} = nat_set2) do
-    map = Map.merge(nat_set1.map, nat_set2.map, fn _slice_idx, slice1, slice2 ->
-      slice1 ||| slice2
-    end)
+    map =
+      Map.merge(nat_set1.map, nat_set2.map, fn _slice_idx, slice1, slice2 ->
+        slice1 ||| slice2
+      end)
 
     %NatSet{map: map}
   end
@@ -264,9 +276,11 @@ defmodule NatSet do
       iex> [3, 1, 4, 2] |> NatSet.new |> NatSet.to_stream |> Enum.to_list
       [1, 2, 3, 4]
   """
-  @spec to_stream(t) :: Enumerable.t
+  @spec to_stream(t) :: Enumerable.t()
   def to_stream(%NatSet{} = nat_set) do
-    nat_set.map |> Map.keys |> Stream.flat_map(fn slice_idx ->
+    nat_set.map
+    |> Map.keys()
+    |> Stream.flat_map(fn slice_idx ->
       slice_first = slice_idx * @slice_size
       slice_last = slice_first + @slice_size - 1
       slice_first..slice_last |> Stream.filter(&member?(nat_set, &1))
@@ -282,23 +296,28 @@ defmodule NatSet do
       [1, 2, 3, 4]
   """
   @spec to_list(t) :: [n]
-  def to_list(%NatSet{} = nat_set), do: nat_set |> to_stream |> Enum.to_list
+  def to_list(%NatSet{} = nat_set), do: nat_set |> to_stream |> Enum.to_list()
 
   defp slice_idx(n), do: n >>> @slice_pow
 
   defimpl Enumerable do
-    def reduce(nat_set, acc, fun), do: nat_set |> NatSet.to_list |> Enumerable.List.reduce(acc, fun)
+    def reduce(nat_set, acc, fun),
+      do: nat_set |> NatSet.to_list() |> Enumerable.List.reduce(acc, fun)
+
+    def slice(_), do: {:error, __MODULE__}
+
     def member?(nat_set, val), do: {:ok, NatSet.member?(nat_set, val)}
     def count(nat_set), do: {:ok, NatSet.size(nat_set)}
   end
 
   defimpl Collectable do
     def into(original) do
-      {original, fn
-        nat_set, {:cont, x} -> NatSet.put(nat_set, x)
-        nat_set, :done -> nat_set
-        _, :halt -> :ok
-      end}
+      {original,
+       fn
+         nat_set, {:cont, x} -> NatSet.put(nat_set, x)
+         nat_set, :done -> nat_set
+         _, :halt -> :ok
+       end}
     end
   end
 
@@ -306,7 +325,7 @@ defmodule NatSet do
     import Inspect.Algebra
 
     def inspect(nat_set, opts) do
-      concat ["#NatSet<", Inspect.List.inspect(NatSet.to_list(nat_set), opts), ">"]
+      concat(["#NatSet<", Inspect.List.inspect(NatSet.to_list(nat_set), opts), ">"])
     end
   end
 end

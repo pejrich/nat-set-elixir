@@ -5,16 +5,18 @@ defmodule NatSet.Mixfile do
   @github_url "https://github.com/hilverd/nat-set-elixir"
 
   def project do
-    [app: :nat_set,
-     version: @version,
-     elixir: "~> 1.2",
-     name: "NatSet",
-     source_url: @github_url,
-     description: description,
-     package: package,
-     build_embedded: Mix.env == :prod,
-     start_permanent: Mix.env == :prod,
-     deps: deps]
+    [
+      app: :nat_set,
+      version: @version,
+      elixir: "~> 1.2",
+      name: "NatSet",
+      source_url: @github_url,
+      description: description(),
+      package: package(),
+      build_embedded: Mix.env() == :prod,
+      start_permanent: Mix.env() == :prod,
+      deps: deps()
+    ]
   end
 
   # Configuration for the OTP application
@@ -23,10 +25,12 @@ defmodule NatSet.Mixfile do
   end
 
   defp deps do
-    [{:earmark, "~> 0.1", only: :dev},
-     {:ex_doc, "~> 0.11", only: :dev},
-     {:dialyxir, "~> 0.3", only: :dev},
-     {:benchfella, "~> 0.3.0", only: :dev}]
+    [
+      {:earmark, ">= 0.0.0", only: :dev},
+      {:ex_doc, ">= 0.0.0", only: :dev},
+      {:dialyxir, ">= 0.0.0", only: :dev},
+      {:benchfella, ">= 0.0.0", only: :dev}
+    ]
   end
 
   defp description do
@@ -34,8 +38,6 @@ defmodule NatSet.Mixfile do
   end
 
   defp package do
-    [maintainers: ["Hilverd Reker"],
-     licenses: ["Apache 2.0"],
-     links: %{"GitHub" => @github_url}]
+    [maintainers: ["Hilverd Reker"], licenses: ["Apache 2.0"], links: %{"GitHub" => @github_url}]
   end
 end
